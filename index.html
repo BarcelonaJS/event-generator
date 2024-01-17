@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>GitHub Issue Viewer</title>
+</head>
+<body>
+    <select id="issue-selector" onchange="fetchMainIssue(this.value)">
+
+    </select>
+
+    <div id="issue-content">
+
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    
+    <script>
+        function extractSponsorDescription(text) {
+            const sponsorDescriptionRegex = /### Sponsor Description\r\n\r\n([\s\S]*?)\r\n\r\n### Code of Conduct/;
+            const match = text.match(sponsorDescriptionRegex);
+            if (match) {
+                return match[1]
+                    .trim()
+                    .split('\n')
+                    .map(line => `<p>${line.trim()}</p>`)
+                    .join('');
+            } else {
+                return '';
+            }
+        }
+
+        function parseEventDetails(issueBody) {
+            return {
+                sponsorName: extractDetail(issueBody, /- Sponsor: (.+) \/ /),
+                sponsorWebsiteUrl: extractDetail(issueBody, /- Sponsor: .+ \/ (.+)/),
+                sponsorDescription: extractSponsorDescription(issueBody)
+            };
+        }
+        
+        function parseTalkDetails(talkIssue) {
+            const talkDetails = {
+                title: talkIssue.title,
+                description: extractMultilineDetail(talkIssue.body, /### Talk Description\n\n([\s\S]+?)\n\n###/),
+                speakerName: extractDetail(talkIssue.body, /### Speaker Name\n\n(.+?)\n\n/),
+                speakerPosition: extractDetail(talkIssue.body, /### Speaker Position\n\n(.+?)\n\n/),
+                speakerLinkedIn: extractDetail(talkIssue.body, /### Speaker LinkedIn\n\n(.+?)\n\n/),
+                speakerTwitter: extractDetail(talkIssue.body, /### Speaker Twitter\n\n(.+?)\n\n/),
+                speakerCompany: extractDetail(talkIssue.body, /### Speaker Company Name\n\n(.+?)\n\n/),
+                speakerCompanyWebsite: extractDetail(talkIssue.body, /### Speaker Company Website\n\n(.+?)\n\n/),
+                speakerCompanyLinkedIn: extractDetail(talkIssue.body, /### Speaker Company LinkedIn\n\n(.+?)\n\n/),
+                speakerCompanyTwitter: extractDetail(talkIssue.body, /### Speaker Company Twitter\n\n(.+?)\n\n/)
+            };
+
+            return talkDetails;
+        }
+
+        function extractMultilineDetail(text, regex) {
+            const match = text.replace(/\r/g, '').match(regex);
+            if (match) {
+                return match[1]
+                    .trim()
+                    .split('\n')
+                    .map(line => line.trim() ? `<p>${line.trim()}</p>` : '')
+                    .join('');
+            } else {
+                return '';
+            }
+        }
+
+        function extractDetail(text, regex) {
+            const match = text.replace(/\r/g, '').match(regex);
+            if (match) {
+                return match[1].trim();
+            } else {
+                return '';
+            }
+        }
+
+
+        function constructEventDescription(eventDetails, talksDetails) {
+            let description = `<p>Hello everyone! Join us for the next meetup. As always, we will have two talks followed by a networking session.</p>`;
+
+            // Assuming talksDetails[0] and talksDetails[1] are the first and second talks
+            description += `<hr>`;
+            description += formatTalk(talksDetails[0]);
+            description += `<hr>`;
+            description += formatTalk(talksDetails[1]);
+            description += `<hr>`;
+            description += `
+            <p><strong>IMPORTANT!</strong></p>
+            <p>Security:</p>
+            <ul>
+            <li>Access control: The security team requires an attendees list. Make sure you register for the event with your full name. Registration will close 24h before the event.</li>
+            <li>You'll be asked to provide your name and ID (DNI, NIE, etc.) to access the building.</li>
+            </ul>
+            <hr>
+            <p>After the talks, we'll have drinks and networking!</p>
+            <p>Are you interested in giving a talk or have a question? You are welcome to comment or shoot a meetup message to the organizers.</p>
+            <p>And don't forget to follow us on Twitter for the latest news <a href="https://twitter.com/BcnJS">@BcnJS</a></strong></p>
+            <hr>
+            <p><strong>Sponsors:</strong></p>
+            <p><strong><a href="${eventDetails.sponsorWebsiteUrl}">${eventDetails.sponsorName}</a></strong></p>
+            <p>${eventDetails.sponsorDescription}</p>`;
+
+            return description;
+        }
+
+        function formatTalk(talk) {
+            const speakerLink = talk.speakerTwitter || talk.speakerLinkedIn;
+            const companyLink = talk.speakerCompanyWebsite || talk.speakerCompanyLinkedIn || talk.speakerCompanyTwitter;
+            return `<p><strong>${talk.title}</strong></p>
+            <p>by <a href="${speakerLink}">${talk.speakerName}</a></p>
+            <p>${talk.speakerPosition} at <a href="${companyLink}">${talk.speakerCompany}</a></p>
+            <p>${talk.description}</p>`;
+        }
+
+        function fetchIssueList() {
+            const issuesApiUrl = 'https://api.github.com/repos/barcelonajs/events/issues';
+            fetch(issuesApiUrl)
+                .then(response => response.json())
+                .then(issues => {
+                    const selector = document.getElementById('issue-selector');
+                    issues.forEach(issue => {
+                        const option = document.createElement('option');
+                        option.value = issue.number;
+                        option.textContent = issue.title;
+                        selector.appendChild(option);
+                    });
+                    fetchMainIssue(issues[0].number)
+                })
+                .catch(error => console.error('Error:', error));
+        }
+
+        function fetchMainIssue(issueNumber) {
+            const mainIssueUrl = `https://api.github.com/repos/BarcelonaJS/events/issues/${issueNumber}`;
+            fetch(mainIssueUrl)
+                .then(response => response.json())
+                .then(mainIssueData => {
+                    const eventDetails = parseEventDetails(mainIssueData.body);
+                    const talkIssueDetails = extractTalkIssueNumbers(mainIssueData.body);
+
+                    const talkDetailsPromises = talkIssueDetails.map(detail => 
+                        fetchTalkDetails(detail.repo, detail.number)
+                    );
+
+                    Promise.all(talkDetailsPromises)
+                        .then(talksDetails => {
+                            const combinedContent = constructEventDescription(eventDetails, talksDetails);
+                            document.getElementById('issue-content').innerHTML = combinedContent;
+                        });
+                })
+                .catch(error => console.error('Error:', error));
+        }
+
+        function extractTalkIssueNumbers(issueBody) {
+            const issueNumberRegex = /https:\/\/github\.com\/BarcelonaJS\/([^\/]+)\/issues\/(\d+)/gi;
+            let match;
+            const issueDetails = [];
+
+            while ((match = issueNumberRegex.exec(issueBody)) !== null) {
+                issueDetails.push({
+                    repo: match[1],
+                    number: match[2]
+                });
+            }
+
+            return issueDetails;
+        }
+
+        function fetchTalkDetails(repo, issueNumber) {
+            const talkIssueUrl = `https://api.github.com/repos/BarcelonaJS/${repo}/issues/${issueNumber}`;
+            return fetch(talkIssueUrl)
+                .then(response => response.json())
+                .then(talkIssueData => {
+                    return parseTalkDetails(talkIssueData);
+                });
+        }
+
+        fetchIssueList();
+    </script>
+</body>
+</html>
