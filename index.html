@@ -1,16 +1,116 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>GitHub Issue Viewer</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BarcelonaJS Event Generator</title>
+    <script src="https://html2canvas.hertzen.com/dist/html2canvas.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;700&display=swap" rel="stylesheet">
+
+    <style>
+        :root {
+            --padding: 64px;
+            --w: 1500px;
+            --h: 500px;
+        }
+
+        .Canvas {
+            border-radius: 2px;
+            margin: auto;
+            transition: all .3s;
+            background-color: #000000;
+            width: calc(var(--w) - var(--padding) * 2);
+            height: calc(var(--h));
+            position: relative;
+            padding: var(--padding)
+        }
+
+        .Motto {
+            font-size: 130px;
+            letter-spacing: 1px;
+            font-weight: 700;
+            margin: 0;
+        }
+
+        .Date {
+            font-size: 36px;
+            margin: 0 0 0 9px;
+        }
+
+        .Logo {
+            position: absolute;
+            bottom: var(--padding);
+            right: var(--padding);
+        }
+
+        .Info {
+            position: absolute;
+            bottom: var(--padding);
+        }
+
+        .Info h3 {
+            font-size: 42px;
+        }
+
+        .Info h4 {
+            font-size: 36px;
+        }
+
+        .Info h3,
+        .Info h4 {
+            margin: 0;
+        }
+
+        /* UI */
+        main {
+            display: block;
+            margin: auto;
+            font-family: 'Noto Sans JP', sans-serif;
+            color: white;
+        }
+
+        header {
+            transition: all .3s;
+            margin: auto;
+            max-width: var(--w);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 24px 0;
+        }
+    </style>
 </head>
 <body>
-    <select id="issue-selector" onchange="fetchMainIssue(this.value)">
-
-    </select>
-
+    <header>
+        <nav>
+            <select id="issue-selector" onchange="fetchMainIssue(this.value)">
+            </select>
+            <button id="btn-download-meetup" onclick="handleMeetupClick()">Download Meetup</button>
+            <button id="btn-download-twitter" onclick="handleTwitterClick()">Download Twitter</button>
+        </nav>
+    </header>
+    <hr />
     <div id="issue-content">
 
     </div>
+    <hr />
+    <main>
+        
+        <div class="Canvas">
+            <h1 class="Motto">BarcelonaJS</h1>
+            <h2 class="Date"></h2>
+
+            <div class="Info">
+                <h3> Offered by:</h3>
+                <h4 class="Company"></h4>
+            </div>
+
+            <img class="Logo" src="./logo.png" />
+        </div>
+    </main>
 
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     
@@ -31,6 +131,8 @@
 
         function parseEventDetails(issueBody) {
             return {
+                eventDate: extractDetail(issueBody, /- When: (.+)/),
+                eventTime: "19:00",
                 sponsorName: extractDetail(issueBody, /- Sponsor: (.+) \/ /),
                 sponsorWebsiteUrl: extractDetail(issueBody, /- Sponsor: .+ \/ (.+)/),
                 sponsorDescription: extractSponsorDescription(issueBody)
@@ -143,6 +245,9 @@
                         fetchTalkDetails(detail.repo, detail.number)
                     );
 
+                    document.querySelector('.Company').innerText = "@" + eventDetails?.sponsorName;
+                    document.querySelector('.Date').innerText = eventDetails?.eventDate + " " + eventDetails?.eventTime;
+
                     Promise.all(talkDetailsPromises)
                         .then(talksDetails => {
                             const combinedContent = constructEventDescription(eventDetails, talksDetails);
@@ -174,6 +279,30 @@
                 .then(talkIssueData => {
                     return parseTalkDetails(talkIssueData);
                 });
+        }
+
+        function handleTwitterClick() {
+            document.documentElement.style.setProperty('--w', 1500 + "px");
+            document.documentElement.style.setProperty('--h', 500 + "px");
+            const canvas = document.querySelector('.Canvas');
+            html2canvas(canvas).then(function (canvas) {
+                const link = document.createElement('a');
+                link.download = 'logo.png';
+                link.href = canvas.toDataURL();
+                link.click();
+            });
+        }
+
+        function handleMeetupClick() {
+            document.documentElement.style.setProperty('--w', 1500 + "px");
+            document.documentElement.style.setProperty('--h', 720 + "px");
+            const canvas = document.querySelector('.Canvas');
+            html2canvas(canvas).then(function (canvas) {
+                const link = document.createElement('a');
+                link.download = 'logo.png';
+                link.href = canvas.toDataURL();
+                link.click();
+            });
         }
 
         fetchIssueList();
