@@ -115,6 +115,18 @@
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     
     <script>
+        function ensureHttps(url) {
+            if (!url.startsWith('http://') && !url.startsWith('https://')) {
+                return 'https://' + url;
+            }
+            return url;
+        }
+
+        function getQueryParam(name) {
+            const urlSearchParams = new URLSearchParams(window.location.search);
+            return urlSearchParams.get(name);
+        }
+
         function extractSponsorDescription(text) {
             const sponsorDescriptionRegex = /### Sponsor Description\r\n\r\n([\s\S]*?)\r\n\r\n### Code of Conduct/;
             const match = text.match(sponsorDescriptionRegex);
@@ -183,11 +195,11 @@
             let description = `<p>Hello everyone! Join us for the next meetup. As always, we will have two talks followed by a networking session.</p>`;
 
             // Assuming talksDetails[0] and talksDetails[1] are the first and second talks
-            description += `<hr>`;
+            description += `─────────────────────────────`;
             description += formatTalk(talksDetails[0]);
-            description += `<hr>`;
+            description += `─────────────────────────────`;
             description += formatTalk(talksDetails[1]);
-            description += `<hr>`;
+            description += `─────────────────────────────`;
             description += `
             <p><strong>IMPORTANT!</strong></p>
             <p>Security:</p>
@@ -195,25 +207,26 @@
             <li>Access control: The security team requires an attendees list. Make sure you register for the event with your full name. Registration will close 24h before the event.</li>
             <li>You'll be asked to provide your name and ID (DNI, NIE, etc.) to access the building.</li>
             </ul>
-            <hr>
+            ─────────────────────────────
             <p>After the talks, we'll have drinks and networking!</p>
             <p>Are you interested in giving a talk or have a question? You are welcome to comment or shoot a meetup message to the organizers.</p>
             <p>And don't forget to follow us on Twitter for the latest news <a href="https://twitter.com/BcnJS">@BcnJS</a></strong></p>
-            <hr>
+            ─────────────────────────────
             <p><strong>Sponsors:</strong></p>
-            <p><strong><a href="${eventDetails.sponsorWebsiteUrl}">${eventDetails.sponsorName}</a></strong></p>
-            <p>${eventDetails.sponsorDescription}</p>`;
+            <p><strong><a href="${ensureHttps(eventDetails.sponsorWebsiteUrl)}">${eventDetails.sponsorName}</a></strong></p>
+            <p>${window.marked.marked(eventDetails.sponsorDescription || "")}</p>`;
 
             return description;
         }
+        
 
         function formatTalk(talk) {
             const speakerLink = talk.speakerTwitter || talk.speakerLinkedIn;
             const companyLink = talk.speakerCompanyWebsite || talk.speakerCompanyLinkedIn || talk.speakerCompanyTwitter;
             return `<p><strong>${talk.title}</strong></p>
-            <p>by <a href="${speakerLink}">${talk.speakerName}</a></p>
-            <p>${talk.speakerPosition} at <a href="${companyLink}">${talk.speakerCompany}</a></p>
-            <p>${talk.description}</p>`;
+            <p>by <a href="${ensureHttps(speakerLink)}">${talk.speakerName}</a></p>
+            <p>${talk.speakerPosition} at <a href="${ensureHttps(companyLink)}">${talk.speakerCompany}</a></p>
+            <p>${window.marked.marked(talk.description || "")}</p>`;
         }
 
         function fetchIssueList() {
@@ -222,18 +235,30 @@
                 .then(response => response.json())
                 .then(issues => {
                     const selector = document.getElementById('issue-selector');
+                    let selectedIssueNumber = getQueryParam('eventId');
                     issues.forEach(issue => {
                         const option = document.createElement('option');
                         option.value = issue.number;
                         option.textContent = issue.title;
                         selector.appendChild(option);
+                        // Set the selected option based on URL query or default
+                        if (issue.number.toString() === selectedIssueNumber) {
+                            option.selected = true;
+                        }
                     });
-                    fetchMainIssue(issues[0].number)
+                    // Default to the oldest issue if no specific event is requested
+                    if (!selectedIssueNumber) {
+                        selectedIssueNumber = issues[issues.length - 1].number;
+                        selector.value = selectedIssueNumber;
+                    }
+                    fetchMainIssue(selectedIssueNumber)
                 })
                 .catch(error => console.error('Error:', error));
         }
 
         function fetchMainIssue(issueNumber) {
+            const newUrl = window.location.pathname + '?eventId=' + issueNumber;
+            history.pushState({ path: newUrl }, '', newUrl);
             const mainIssueUrl = `https://api.github.com/repos/BarcelonaJS/events/issues/${issueNumber}`;
             fetch(mainIssueUrl)
                 .then(response => response.json())
@@ -245,8 +270,11 @@
                         fetchTalkDetails(detail.repo, detail.number)
                     );
 
+                    const date = eventDetails?.eventDate ? new Date(eventDetails.eventDate + " " + eventDetails?.eventTime) : new Date();
+                    const dtf = new Intl.DateTimeFormat('en', { dateStyle: 'long', timeStyle: 'short' })
+
                     document.querySelector('.Company').innerText = "@" + eventDetails?.sponsorName;
-                    document.querySelector('.Date').innerText = eventDetails?.eventDate + " " + eventDetails?.eventTime;
+                    document.querySelector('.Date').innerText = dtf.format(date);
 
                     Promise.all(talkDetailsPromises)
                         .then(talksDetails => {
